@@ -1,0 +1,12 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: #0f0f10; /* same as your app bg */
+  color: #e5e7eb; /* light gray text */
+}
+#root {
+  height: 100%;
+  background-color: #0f0f10;
+}
