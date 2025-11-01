@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Lock, UserPlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    navigate("/dashboard"); // temporary redirect after login/signup
+  };
 
   return (
     <div className="relative flex h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
@@ -30,16 +37,12 @@ export default function Login() {
                 <Lock size={28} />
               </div>
               <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-              <p className="text-gray-400 text-sm">
-                Sign in to continue to MONETIQ
-              </p>
+              <p className="text-gray-400 text-sm">Sign in to continue to MONETIQ</p>
             </div>
 
-            <form className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="text-sm font-medium text-gray-300">
-                  Email
-                </label>
+                <label className="text-sm font-medium text-gray-300">Email</label>
                 <input
                   type="email"
                   placeholder="you@example.com"
@@ -47,9 +50,7 @@ export default function Login() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-300">
-                  Password
-                </label>
+                <label className="text-sm font-medium text-gray-300">Password</label>
                 <input
                   type="password"
                   placeholder="••••••••"
@@ -94,11 +95,9 @@ export default function Login() {
               <p className="text-gray-400 text-sm">Join MONETIQ in seconds</p>
             </div>
 
-            <form className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-300">
-                  Full Name
-                </label>
+                <label className="text-sm font-medium text-gray-300">Full Name</label>
                 <input
                   type="text"
                   placeholder="John Doe"
@@ -114,9 +113,7 @@ export default function Login() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-300">
-                  Password
-                </label>
+                <label className="text-sm font-medium text-gray-300">Password</label>
                 <input
                   type="password"
                   placeholder="••••••••"

@@ -3,36 +3,35 @@ import { motion } from "framer-motion";
 import {
   LineChart,
   Line,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  AreaChart,
-  Area,
+  ResponsiveContainer,
 } from "recharts";
 import {
   Wallet,
   PiggyBank,
   TrendingUp,
-  TrendingDown,
   DollarSign,
   Target,
   PieChart as PieIcon,
   Activity,
+  BarChart2,
 } from "lucide-react";
 
 export default function Analytics() {
   const [timeRange, setTimeRange] = useState("6M");
 
-  const COLORS = ["#38bdf8", "#8b5cf6", "#ec4899", "#22c55e", "#f59e0b", "#3b82f6"];
+  const COLORS = ["#38bdf8", "#8b5cf6", "#ec4899", "#22c55e", "#f59e0b", "#a855f7"];
 
-  // Mock data for income vs expenses
   const monthlyData = [
     { month: "Jan", income: 4200, expenses: 2900, savings: 1300 },
     { month: "Feb", income: 4600, expenses: 3100, savings: 1500 },
@@ -42,7 +41,6 @@ export default function Analytics() {
     { month: "Jun", income: 6200, expenses: 4000, savings: 2200 },
   ];
 
-  // Category breakdown
   const expenseBreakdown = [
     { name: "Rent", value: 1200 },
     { name: "Food", value: 800 },
@@ -52,7 +50,22 @@ export default function Analytics() {
     { name: "Healthcare", value: 200 },
   ];
 
-  // Goal tracking
+  const savingsTrend = [
+    { month: "Jan", target: 1200, achieved: 1300 },
+    { month: "Feb", target: 1500, achieved: 1450 },
+    { month: "Mar", target: 1700, achieved: 1700 },
+    { month: "Apr", target: 1900, achieved: 1800 },
+    { month: "May", target: 2100, achieved: 1950 },
+    { month: "Jun", target: 2300, achieved: 2200 },
+  ];
+
+  const stats = [
+    { title: "Total Income", value: "$31,200", change: "+12%", icon: DollarSign, color: "from-emerald-400 to-green-600" },
+    { title: "Total Expenses", value: "$21,100", change: "+8%", icon: Wallet, color: "from-rose-400 to-pink-600" },
+    { title: "Total Savings", value: "$10,100", change: "+19%", icon: PiggyBank, color: "from-sky-400 to-blue-600" },
+    { title: "Net Worth", value: "$42,800", change: "+9%", icon: Activity, color: "from-violet-400 to-purple-600" },
+  ];
+
   const goals = [
     { goal: "Emergency Fund", progress: 80 },
     { goal: "Vacation Savings", progress: 60 },
@@ -60,71 +73,20 @@ export default function Analytics() {
     { goal: "Home Downpayment", progress: 30 },
   ];
 
-  // Weekly spending pattern
-  const spendingHeatmap = [
-    { day: "Mon", amount: 90 },
-    { day: "Tue", amount: 150 },
-    { day: "Wed", amount: 120 },
-    { day: "Thu", amount: 200 },
-    { day: "Fri", amount: 310 },
-    { day: "Sat", amount: 420 },
-    { day: "Sun", amount: 250 },
-  ];
-
-  // Stat summary
-  const stats = [
-    {
-      title: "Total Income",
-      value: "$31,200",
-      change: "+12%",
-      icon: DollarSign,
-      color: "from-green-400 to-emerald-600",
-    },
-    {
-      title: "Total Expenses",
-      value: "$21,100",
-      change: "+8%",
-      icon: Wallet,
-      color: "from-pink-400 to-rose-600",
-    },
-    {
-      title: "Total Savings",
-      value: "$10,100",
-      change: "+19%",
-      icon: PiggyBank,
-      color: "from-sky-400 to-blue-600",
-    },
-    {
-      title: "Net Worth",
-      value: "$42,800",
-      change: "+9%",
-      icon: Activity,
-      color: "from-violet-500 to-purple-600",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0f0f10] via-[#141414] to-[#0f0f10] p-6 text-gray-200">
-      {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-[#0b0c0f] via-[#121315] to-[#0b0c0f] p-4 sm:p-6 text-gray-100">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-green-400 via-teal-500 to-sky-500 bg-clip-text text-transparent">
-            Financial Analytics
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 bg-clip-text text-transparent">
+            Analytics Overview
           </h2>
-          <p className="text-gray-400 text-sm">
-            Deep insights into your income, expenses, savings, and goals.
-          </p>
+          <p className="text-gray-400 text-sm">Your finances dissected with real data insight.</p>
         </motion.div>
 
-        {/* Time Range Filter */}
         <select
           value={timeRange}
           onChange={(e) => setTimeRange(e.target.value)}
-          className="bg-gray-800/80 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:ring-1 focus:ring-sky-500 outline-none"
+          className="bg-gray-900/70 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 focus:ring-1 focus:ring-emerald-500 outline-none"
         >
           <option value="1M">Last Month</option>
           <option value="3M">Last 3 Months</option>
@@ -133,7 +95,6 @@ export default function Analytics() {
         </select>
       </div>
 
-      {/* Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
         {stats.map((card, i) => {
           const Icon = card.icon;
@@ -143,19 +104,15 @@ export default function Analytics() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="rounded-xl p-5 bg-gray-900/70 border border-gray-800 hover:shadow-[0_0_16px_rgba(56,189,248,0.15)] transition-all"
+              className="rounded-2xl p-5 bg-gray-900/70 border border-gray-800 shadow hover:shadow-[0_0_18px_rgba(16,185,129,0.15)] transition-all"
             >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">{card.title}</p>
                   <h3 className="text-2xl font-bold mt-1">{card.value}</h3>
-                  <span className="text-xs font-medium text-green-400">
-                    {card.change}
-                  </span>
+                  <span className="text-xs font-medium text-emerald-400">{card.change}</span>
                 </div>
-                <div
-                  className={`p-3 rounded-lg bg-gradient-to-r ${card.color} bg-opacity-20`}
-                >
+                <div className={`p-3 rounded-lg bg-gradient-to-r ${card.color} bg-opacity-20`}>
                   <Icon size={22} />
                 </div>
               </div>
@@ -164,61 +121,49 @@ export default function Analytics() {
         })}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-        {/* Cash Flow Chart */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="col-span-2 bg-gray-900/70 border border-gray-800 rounded-xl p-6"
+          className="col-span-2 bg-gray-900/70 border border-gray-800 rounded-2xl p-6"
         >
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <TrendingUp size={18} className="text-sky-400" />
-            Income vs Expenses
+            <TrendingUp size={18} className="text-emerald-400" /> Income vs Expenses
           </h3>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={monthlyData}>
               <defs>
-                <linearGradient id="income" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="expenses" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6} />
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-              <XAxis dataKey="month" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
+              <XAxis dataKey="month" stroke="#9ca3af" />
+              <YAxis stroke="#9ca3af" />
               <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
-              <Area type="monotone" dataKey="income" stroke="#22c55e" fill="url(#income)" />
-              <Area
-                type="monotone"
-                dataKey="expenses"
-                stroke="#ef4444"
-                fill="url(#expenses)"
-              />
+              <Area type="monotone" dataKey="income" stroke="#10b981" fill="url(#inc)" strokeWidth={2.5} />
+              <Area type="monotone" dataKey="expenses" stroke="#ef4444" fill="url(#exp)" strokeWidth={2.5} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Expense Breakdown */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-gray-900/70 border border-gray-800 rounded-xl p-6"
+          className="bg-gray-900/70 border border-gray-800 rounded-2xl p-6"
         >
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <PieIcon size={18} className="text-violet-400" />
-            Expense Breakdown
+            <PieIcon size={18} className="text-sky-400" /> Expense Breakdown
           </h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie data={expenseBreakdown} cx="50%" cy="50%" outerRadius={90} dataKey="value">
-                {expenseBreakdown.map((entry, i) => (
+                {expenseBreakdown.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
               </Pie>
@@ -228,46 +173,53 @@ export default function Analytics() {
         </motion.div>
       </div>
 
-      {/* Bottom Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Savings Trend */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-gray-900/70 border border-gray-800 rounded-xl p-6 col-span-1"
+          className="bg-gray-900/70 border border-gray-800 rounded-2xl p-6"
         >
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <PiggyBank size={18} className="text-emerald-400" />
-            Savings Growth
+            <BarChart2 size={18} className="text-teal-400" /> Savings Target vs Achieved
           </h3>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={savingsTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <XAxis dataKey="month" stroke="#9ca3af" />
+              <YAxis stroke="#9ca3af" />
+              <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
+              <Bar dataKey="target" fill="#64748b" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="achieved" fill="#10b981" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gray-900/70 border border-gray-800 rounded-2xl p-6"
+        >
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <PiggyBank size={18} className="text-emerald-400" /> Savings Growth
+          </h3>
+          <ResponsiveContainer width="100%" height={260}>
             <LineChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-              <XAxis dataKey="month" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
+              <XAxis dataKey="month" stroke="#9ca3af" />
+              <YAxis stroke="#9ca3af" />
               <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
-              <Line
-                type="monotone"
-                dataKey="savings"
-                stroke="#10b981"
-                strokeWidth={3}
-                dot={{ fill: "#10b981" }}
-              />
+              <Line type="monotone" dataKey="savings" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Goals Progress */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-gray-900/70 border border-gray-800 rounded-xl p-6 col-span-2"
+          className="bg-gray-900/70 border border-gray-800 rounded-2xl p-6"
         >
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Target size={18} className="text-sky-400" />
-            Goal Progress
+            <Target size={18} className="text-sky-400" /> Goal Progress
           </h3>
           <div className="space-y-4">
             {goals.map((g, i) => (
@@ -281,7 +233,7 @@ export default function Analytics() {
                     initial={{ width: 0 }}
                     animate={{ width: `${g.progress}%` }}
                     transition={{ duration: 1 }}
-                    className="h-full bg-gradient-to-r from-sky-500 to-violet-500"
+                    className="h-full bg-gradient-to-r from-sky-400 to-violet-500"
                   />
                 </div>
               </div>
