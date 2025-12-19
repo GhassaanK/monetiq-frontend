@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   LineChart,
@@ -26,52 +26,102 @@ import {
   Activity,
   BarChart2,
 } from "lucide-react";
+import { api } from "../api/client";
+import { useToast } from "../components/common/Toast";
 
 export default function Analytics() {
   const [timeRange, setTimeRange] = useState("6M");
+  const [loading, setLoading] = useState(true);
+  const [incomes, setIncomes] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+
+  const { VITE_BACKEND } = import.meta.env;
+  const API_BASE = VITE_BACKEND || "";
+  const toast = useToast();
 
   const COLORS = ["#38bdf8", "#8b5cf6", "#ec4899", "#22c55e", "#f59e0b", "#a855f7"];
 
-  const monthlyData = [
-    { month: "Jan", income: 4200, expenses: 2900, savings: 1300 },
-    { month: "Feb", income: 4600, expenses: 3100, savings: 1500 },
-    { month: "Mar", income: 5000, expenses: 3300, savings: 1700 },
-    { month: "Apr", income: 5400, expenses: 3600, savings: 1800 },
-    { month: "May", income: 5800, expenses: 3900, savings: 1900 },
-    { month: "Jun", income: 6200, expenses: 4000, savings: 2200 },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        // use central api helper
+        const inc = await api.get('/api/incomes');
+        const exp = await api.get('/api/expenses');
+        setIncomes(Array.isArray(inc) ? inc : []);
+        setExpenses(Array.isArray(exp) ? exp : []);
+      } catch (err) {
+        toast && toast("Unable to load analytics — check your network or login.", { type: "error" });
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [API_BASE]);
 
-  const expenseBreakdown = [
-    { name: "Rent", value: 1200 },
-    { name: "Food", value: 800 },
-    { name: "Transport", value: 400 },
-    { name: "Shopping", value: 350 },
-    { name: "Entertainment", value: 250 },
-    { name: "Healthcare", value: 200 },
-  ];
+  // helpers to produce monthly aggregates for the selected range
+  const monthsBack = (range) => {
+    if (range === "1M") return 1;
+    if (range === "3M") return 3;
+    if (range === "6M") return 6;
+    return 12;
+  };
 
-  const savingsTrend = [
-    { month: "Jan", target: 1200, achieved: 1300 },
-    { month: "Feb", target: 1500, achieved: 1450 },
-    { month: "Mar", target: 1700, achieved: 1700 },
-    { month: "Apr", target: 1900, achieved: 1800 },
-    { month: "May", target: 2100, achieved: 1950 },
-    { month: "Jun", target: 2300, achieved: 2200 },
-  ];
+  const buildMonthlyData = (n) => {
+    const now = new Date();
+    const months = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      months.push({ date: d, key, label: d.toLocaleString(undefined, { month: 'short' }) });
+    }
+    const incMap = {};
+    const expMap = {};
+    incomes.forEach((it) => {
+      const d = new Date(it.date);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      incMap[key] = (incMap[key] || 0) + (Number(it.amount) || 0);
+    });
+    expenses.forEach((it) => {
+      const d = new Date(it.date);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      expMap[key] = (expMap[key] || 0) + (Number(it.amount) || 0);
+    });
+
+    return months.map((m) => ({ month: m.label, income: incMap[m.key] || 0, expenses: expMap[m.key] || 0, savings: (incMap[m.key] || 0) - (expMap[m.key] || 0) }));
+  };
+
+  const n = monthsBack(timeRange);
+  const monthlyData = buildMonthlyData(n);
+
+  const expenseBreakdown = (() => {
+    const map = {};
+    expenses.forEach((e) => {
+      const k = e.category || 'Other';
+      map[k] = (map[k] || 0) + (Number(e.amount) || 0);
+    });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  })();
+
+  const totalIncome = incomes.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const totalExpense = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalSavings = totalIncome - totalExpense;
 
   const stats = [
-    { title: "Total Income", value: "$31,200", change: "+12%", icon: DollarSign, color: "from-emerald-400 to-green-600" },
-    { title: "Total Expenses", value: "$21,100", change: "+8%", icon: Wallet, color: "from-rose-400 to-pink-600" },
-    { title: "Total Savings", value: "$10,100", change: "+19%", icon: PiggyBank, color: "from-sky-400 to-blue-600" },
-    { title: "Net Worth", value: "$42,800", change: "+9%", icon: Activity, color: "from-violet-400 to-purple-600" },
+    { title: "Total Income", value: `$${totalIncome.toLocaleString()}`, change: "", icon: DollarSign, color: "from-emerald-400 to-green-600" },
+    { title: "Total Expenses", value: `$${totalExpense.toLocaleString()}`, change: "", icon: Wallet, color: "from-rose-400 to-pink-600" },
+    { title: "Total Savings", value: `$${totalSavings.toLocaleString()}`, change: "", icon: PiggyBank, color: "from-sky-400 to-blue-600" },
+    { title: "Active Entries", value: incomes.length + expenses.length, change: "", icon: Activity, color: "from-violet-400 to-purple-600" },
   ];
 
   const goals = [
-    { goal: "Emergency Fund", progress: 80 },
-    { goal: "Vacation Savings", progress: 60 },
-    { goal: "Car Purchase", progress: 45 },
-    { goal: "Home Downpayment", progress: 30 },
+    { goal: "Emergency Fund", progress: Math.min(100, Math.round((totalSavings / Math.max(1, totalIncome)) * 100)) },
+    { goal: "Vacation Savings", progress: Math.min(100, 60) },
+    { goal: "Car Purchase", progress: Math.min(100, 45) },
+    { goal: "Home Downpayment", progress: Math.min(100, 30) },
   ];
+
+  const savingsTrend = monthlyData.map((m) => ({ month: m.month, target: Math.round(m.income * 0.3), achieved: Math.max(0, m.savings) }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0b0c0f] via-[#121315] to-[#0b0c0f] p-4 sm:p-6 text-gray-100">
@@ -94,6 +144,9 @@ export default function Analytics() {
           <option value="12M">Last Year</option>
         </select>
       </div>
+      {loading && (
+        <div className="mb-4 text-sm text-gray-400">Loading analytics data...</div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
         {stats.map((card, i) => {

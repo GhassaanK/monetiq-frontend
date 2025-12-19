@@ -1,5 +1,8 @@
+const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_BACKEND) || "";
+
 export async function signup({ name, email, password }) {
-  const response = await fetch("/api/users/register", {
+  const url = API_BASE ? `${API_BASE}/api/users/register` : "/api/users/register";
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -25,7 +28,8 @@ export async function signup({ name, email, password }) {
 
 
 export async function login({ email, password }) {
-  const response = await fetch("/api/users/login", {
+  const url = API_BASE ? `${API_BASE}/api/users/login` : "/api/users/login";
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

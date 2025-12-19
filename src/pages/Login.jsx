@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Lock, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { signup, login } from "../api/auth";
+import { useToast } from "../components/common/Toast";
 
 export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -22,12 +23,7 @@ export default function Login() {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loadingSignup, setLoadingSignup] = useState(false);
 
-  const [toast, setToast] = useState(null);
-
-  const showToast = (type, message) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const showToast = useToast();
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -35,10 +31,10 @@ export default function Login() {
     try {
       const res = await signup(signupData);
       localStorage.setItem("token", res.token);
-      showToast("success", "Account created successfully");
+      showToast("Account created successfully", { type: "success" });
       navigate("/dashboard");
     } catch (err) {
-      showToast("error", err.message);
+      showToast(err.message || "Registration failed", { type: "error" });
     } finally {
       setLoadingSignup(false);
     }
@@ -50,9 +46,10 @@ export default function Login() {
     try {
       const res = await login(loginData);
       localStorage.setItem("token", res.token);
+      showToast("Logged in successfully", { type: "success" });
       navigate("/dashboard");
     } catch (err) {
-      showToast("error", err.message);
+      showToast(err.message || "Login failed", { type: "error" });
     } finally {
       setLoadingLogin(false);
     }
@@ -60,17 +57,7 @@ export default function Login() {
 
   return (
     <div className="relative flex h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${
-            toast.type === "success"
-              ? "bg-emerald-600 text-white"
-              : "bg-rose-600 text-white"
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
+      {/* global toasts handled by ToastProvider */}
 
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-32 -left-20 h-72 w-72 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-30 blur-3xl animate-pulse" />

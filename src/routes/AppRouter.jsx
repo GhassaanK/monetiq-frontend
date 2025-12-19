@@ -6,7 +6,7 @@ import Sidebar from "../components/layout/Sidebar";
 import Navbar from "../components/layout/Navbar";
 import Analytics from "../pages/Analytics";
 import Transactions from "../pages/Transactions";
-import BudgetPlanner from "../pages/BudgetPlanner";
+import EventsPage from "../pages/EventsPage";
 
 function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -55,10 +55,10 @@ export default function AppRouter() {
           }
         />
         <Route
-          path="/budget-planner"
+          path="/events"
           element={
             <Layout>
-              <BudgetPlanner/>
+              <EventsPage/>
             </Layout>
           }
         />

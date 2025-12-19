@@ -1,4 +1,4 @@
-import { Home, BarChart3, CreditCard, Wallet, LogOut, X } from "lucide-react";
+import { Home, BarChart3, CreditCard, Calendar, LogOut, X } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 export default function Sidebar({ isOpen, setIsOpen }) {
@@ -8,7 +8,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
     { name: "Dashboard", icon: Home, path: "/dashboard" },
     { name: "Analytics", icon: BarChart3, path: "/analytics" },
     { name: "Transactions", icon: CreditCard, path: "/transactions" },
-    { name: "Budget Planner", icon: Wallet, path: "/budget-planner" },
+    { name: "Events", icon: Calendar, path: "/events" },
   ];
 
   const handleLogout = () => {

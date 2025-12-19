@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useToast } from "../components/common/Toast";
+import { api } from "../api/client";
 import { motion } from "framer-motion";
 import {
   TrendingUp,
@@ -27,6 +29,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const toast = useToast();
   const COLORS = ["#38bdf8", "#8b5cf6", "#ec4899", "#22c55e"];
 
   const [incomes, setIncomes] = useState([]);
@@ -41,26 +44,13 @@ export default function Dashboard() {
       return;
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
-
-    const safeFetch = async (url) => {
-      const res = await fetch(url, { headers });
-      if (!res.ok) throw new Error("unauthorized");
-      const text = await res.text();
-      return text ? JSON.parse(text) : [];
-    };
-
-    Promise.all([
-      safeFetch("/api/incomes"),
-      safeFetch("/api/expenses"),
-    ])
+    Promise.all([api.get('/api/incomes'), api.get('/api/expenses')])
       .then(([incomeData, expenseData]) => {
-        setIncomes(incomeData);
-        setExpenses(expenseData);
+        setIncomes(Array.isArray(incomeData) ? incomeData : []);
+        setExpenses(Array.isArray(expenseData) ? expenseData : []);
       })
       .catch(() => {
-        localStorage.removeItem("token");
-        navigate("/");
+        toast("You have requested an unauthorized action, please refrain from doing that as the application is under development!", { type: "error" });
       });
   }, [navigate]);
 

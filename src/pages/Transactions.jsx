@@ -20,7 +20,12 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useToast } from "../components/common/Toast";
+import { api } from "../api/client";
+
+// Use Vite environment variable for backend base URL if provided
+const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_BACKEND) || "";
 
 const authHeaders = () => {
   const token = localStorage.getItem("token");
@@ -35,6 +40,9 @@ const authHeaders = () => {
 
 
 export default function Transactions() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const location = useLocation();
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -62,9 +70,6 @@ export default function Transactions() {
     description: "",
   });
 
-
-  /* ================= AUTH + LOAD ================= */
-
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -72,21 +77,10 @@ export default function Transactions() {
       return;
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
-
-    const safeFetch = async (url) => {
-      const res = await fetch(url, { headers });
-      if (!res.ok) throw new Error("unauthorized");
-      return res.json();
-    };
-
-    Promise.all([
-      safeFetch("/api/incomes"),
-      safeFetch("/api/expenses"),
-    ])
+    Promise.all([api.get('/api/incomes'), api.get('/api/expenses')])
       .then(([incomes, expenses]) => {
         setTransactions([
-          ...incomes.map((i) => ({
+          ...(Array.isArray(incomes) ? incomes : []).map((i) => ({
             id: `i-${i.id}`,
             backendId: i.id,
             type: "income",
@@ -95,7 +89,7 @@ export default function Transactions() {
             date: i.date,
             notes: i.notes || "",
           })),
-          ...expenses.map((e) => ({
+          ...(Array.isArray(expenses) ? expenses : []).map((e) => ({
             id: `e-${e.id}`,
             backendId: e.id,
             type: "expense",
@@ -107,103 +101,111 @@ export default function Transactions() {
         ]);
       })
       .catch(() => {
-        localStorage.removeItem("token");
-        navigate("/");
+        toast("You have requested an unauthorized action, please refrain from doing that as the application is under development!", { type: "error" });
       });
   }, [navigate]);
 
-  /* ================= CREATE ================= */
+  const handleAddIncome = async () => {
+    const rawAmount = newIncome.amount;
+    const amount = Number(rawAmount);
+    if (rawAmount === "" || !Number.isFinite(amount) || !newIncome.date || !newIncome.source.trim()) return;
 
-  const handleAdd = async () => {
-    const headers = authHeaders();
-    if (!headers) {
-      navigate("/");
-      return;
+    const payload = {
+      source: newIncome.source,
+      amount,
+      date: newIncome.date,
+      notes: newIncome.notes,
+    };
+
+    try {
+      const created = await api.post('/api/incomes', payload);
+      setTransactions((prev) => [
+        ...prev,
+        {
+          id: `i-${created.id}`,
+          backendId: created.id,
+          type: "income",
+          category: created.source,
+          amount: Number(created.amount),
+          date: created.date,
+          notes: created.notes || "",
+        },
+      ]);
+      toast("Income added", { type: "success" });
+      setNewIncome({ source: "", amount: "", date: "", notes: "" });
+      setShowModal(false);
+    } catch (err) {
+      console.error("Failed to add income", err);
+      toast(err.message || "Failed to add income", { type: "error" });
     }
+  };
 
-    const isIncome = transactionType === "income";
-    const url = isIncome ? "/api/incomes" : "/api/expenses";
-    const payload = isIncome
-      ? {
-        source: newIncome.source,
-        amount: Number(newIncome.amount),
-        date: newIncome.date,
-        notes: newIncome.notes,
-      }
-      : {
-        category: newExpense.category,
-        amount: Number(newExpense.amount),
-        date: newExpense.date,
-        description: newExpense.description,
-      };
+  const handleAddExpense = async () => {
+    const rawAmount = newExpense.amount;
+    const amount = Number(rawAmount);
+    if (rawAmount === "" || !Number.isFinite(amount) || !newExpense.date || !newExpense.category.trim()) return;
 
-    if (
-      payload.amount === "" ||
-      Number.isNaN(payload.amount) ||
-      !payload.date ||
-      (isIncome ? !payload.source.trim() : !payload.category.trim())
-    ) return;
+    const payload = {
+      category: newExpense.category,
+      amount,
+      date: newExpense.date,
+      description: newExpense.description,
+    };
 
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-
-    if (res.status === 401) {
-      console.error("401 on expense add - check backend auth");
-      localStorage.removeItem("token");
-      navigate("/");
-      return;
+    try {
+      const created = await api.post('/api/expenses', payload);
+      setTransactions((prev) => [
+        ...prev,
+        {
+          id: `e-${created.id}`,
+          backendId: created.id,
+          type: "expense",
+          category: created.category,
+          amount: Number(created.amount),
+          date: created.date,
+          notes: created.description || "",
+        },
+      ]);
+      toast("Expense added", { type: "success" });
+      setNewExpense({ category: "", amount: "", date: "", description: "" });
+      setShowModal(false);
+    } catch (err) {
+      console.error("Failed to add expense", err);
+      toast(err.message || "Failed to add expense", { type: "error" });
     }
-
-    if (!res.ok) {
-      console.error("Failed to add:", res.status, await res.text());
-      return;
-    }
-
-    if (!res.ok) return;
-
-    const created = await res.json();
-
-    setTransactions((prev) => [
-      ...prev,
-      {
-        id: `${isIncome ? "i" : "e"}-${created.id}`,
-        backendId: created.id,
-        type: transactionType,
-        category: isIncome ? created.source : created.category,
-        amount: Number(created.amount),
-        date: created.date,
-        notes: isIncome ? created.notes || "" : created.description || "",
-      },
-    ]);
-
-    setNewIncome({ source: "", amount: "", date: "", notes: "" });
-    setNewExpense({ category: "", amount: "", date: "", description: "" });
-    setShowModal(false);
   };
 
 
   /* ================= DELETE ================= */
 
   const handleDelete = async (t) => {
-    const token = localStorage.getItem("token");
-    const url =
-      t.type === "income"
-        ? `/api/incomes/${t.backendId}`
-        : `/api/expenses/${t.backendId}`;
-
-    await fetch(url, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const url = t.type === "income" ? `/api/incomes/${t.backendId}` : `/api/expenses/${t.backendId}`;
+    await api.del(url);
 
     setTransactions((prev) => prev.filter((x) => x.id !== t.id));
+      toast("Entry deleted", { type: "success" });
   };
 
   /* ================= DERIVED ================= */
+
+  const searchQuery = useMemo(() => {
+    try {
+      const p = new URLSearchParams(location.search);
+      return (p.get("q") || "").toLowerCase().trim();
+    } catch (e) {
+      return "";
+    }
+  }, [location.search]);
+
+  // If URL contains an empty `q` param (e.g. ?q=), remove it so we show all data.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(location.search);
+      if (p.has("q") && (p.get("q") || "").trim() === "") {
+        navigate(location.pathname, { replace: true });
+      }
+    } catch (e) {}
+  }, [location.search, location.pathname, navigate]);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
@@ -212,9 +214,13 @@ export default function Transactions() {
       const withinDate =
         (!filters.startDate || t.date >= filters.startDate) &&
         (!filters.endDate || t.date <= filters.endDate);
-      return matchesType && matchesCategory && withinDate;
+      const q = searchQuery;
+      const matchesQuery = !q || [t.category, t.notes, t.type, String(t.amount), t.date]
+        .some((f) => f && f.toString().toLowerCase().includes(q));
+
+      return matchesType && matchesCategory && withinDate && matchesQuery;
     });
-  }, [transactions, filters]);
+  }, [transactions, filters, searchQuery]);
 
   const totals = useMemo(() => {
     const income = filteredTransactions
@@ -246,6 +252,32 @@ export default function Transactions() {
     return Object.values(weeks);
   }, [transactions]);
 
+  const monthlyData = useMemo(() => {
+    // build last 6 months buckets
+    const buckets = {};
+    const labels = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      const label = d.toLocaleString(undefined, { month: 'short' });
+      buckets[key] = { month: label, income: 0, expense: 0 };
+      labels.push(key);
+    }
+
+    transactions.forEach((t) => {
+      try {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        if (buckets[key]) {
+          buckets[key][t.type] += Number(t.amount) || 0;
+        }
+      } catch (e) {}
+    });
+
+    return Object.keys(buckets).map((k) => buckets[k]);
+  }, [transactions]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#090a0c] via-[#121315] to-[#090a0c] text-gray-100 px-4 py-6 sm:px-6 md:px-10">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-5">
@@ -257,14 +289,25 @@ export default function Transactions() {
           Transactions
         </motion.h2>
 
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowModal(true)}
-          className="flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-lg hover:shadow-emerald-500/30 transition-all"
-        >
-          <Plus size={18} /> Add Transaction
-        </motion.button>
+        <div className="flex gap-3 w-full sm:w-auto">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setTransactionType("income"); setShowModal(true); }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-lg hover:shadow-emerald-500/30 transition-all"
+          >
+            <Wallet size={16} /> Add Income
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => { setTransactionType("expense"); setShowModal(true); }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-medium shadow-lg hover:shadow-rose-500/30 transition-all"
+          >
+            <ArrowDownRight size={16} /> Add Expense
+          </motion.button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
@@ -301,16 +344,7 @@ export default function Transactions() {
             <BarChart2 size={18} className="text-teal-400" /> Income vs Expenses (Monthly)
           </h3>
           <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart
-              data={[
-                { month: "Jan", income: 4200, expense: 2500 },
-                { month: "Feb", income: 3800, expense: 2600 },
-                { month: "Mar", income: 4600, expense: 3100 },
-                { month: "Apr", income: 4900, expense: 3400 },
-                { month: "May", income: 5200, expense: 3700 },
-                { month: "Jun", income: 5500, expense: 4200 },
-              ]}
-            >
+            <ComposedChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
               <XAxis dataKey="month" stroke="#9ca3af" />
               <YAxis stroke="#9ca3af" />
@@ -329,17 +363,14 @@ export default function Transactions() {
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <Filter size={18} className="text-sky-400" /> Category Insights
           </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            {/* <BarChart2 /> */}
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart layout="vertical" data={categorySpending} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                <XAxis type="number" stroke="#9ca3af" />
-                <YAxis dataKey="category" type="category" stroke="#9ca3af" />
-                <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
-                <Bar dataKey="value" fill="#38bdf8" radius={[0, 6, 6, 0]} barSize={15} />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart layout="vertical" data={categorySpending} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <XAxis type="number" stroke="#9ca3af" />
+              <YAxis dataKey="category" type="category" stroke="#9ca3af" />
+              <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
+              <Bar dataKey="value" fill="#38bdf8" radius={[0, 6, 6, 0]} barSize={15} />
+            </ComposedChart>
           </ResponsiveContainer>
         </motion.div>
       </div>
@@ -394,7 +425,7 @@ export default function Transactions() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{t.category}</td>
-                  <td className="px-4 py-3">${t.amount}</td>
+                  <td className="px-4 py-3">${t.amount.toFixed(2)}</td>
                   <td className="px-4 py-3">{t.date}</td>
                   <td className="px-4 py-3 text-gray-400 truncate max-w-[150px]">{t.notes}</td>
                   <td className="px-4 py-3 text-center">
@@ -423,25 +454,8 @@ export default function Transactions() {
               exit={{ scale: 0.8, opacity: 0 }}
               className="bg-gray-900/95 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl backdrop-blur-xl"
             >
-              <h3 className="text-lg font-semibold mb-4">Add Transaction</h3>
+              <h3 className="text-lg font-semibold mb-4">{`Add ${transactionType.charAt(0).toUpperCase() + transactionType.slice(1)}`}</h3>
               <div className="space-y-3">
-                <div className="flex gap-3">
-                  {["income", "expense"].map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setTransactionType(type)}
-                      className={`flex-1 py-2 rounded-lg border ${transactionType === type
-                        ? type === "income"
-                          ? "border-emerald-400 text-emerald-400"
-                          : "border-rose-400 text-rose-400"
-                        : "border-gray-700 text-gray-400"
-                        }`}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </button>
-                  ))}
-                </div>
-
                 {transactionType === "income" && (
                   <>
                     <input
@@ -513,8 +527,13 @@ export default function Transactions() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleAdd}
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium shadow-md hover:shadow-emerald-500/30 transition-all"
+                  onClick={transactionType === "income" ? handleAddIncome : handleAddExpense}
+                  className={
+                    `px-4 py-2 rounded-lg text-white font-medium shadow-md transition-all ` +
+                    (transactionType === "income"
+                      ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-emerald-500/30"
+                      : "bg-gradient-to-r from-rose-500 to-pink-500 hover:shadow-rose-500/30")
+                  }
                 >
                   Add
                 </button>
