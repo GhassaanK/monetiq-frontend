@@ -24,7 +24,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "../components/common/Toast";
 import { api } from "../api/client";
 
-// Use Vite environment variable for backend base URL if provided
 const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_BACKEND) || "";
 
 const authHeaders = () => {
@@ -43,7 +42,6 @@ export default function Transactions() {
   const navigate = useNavigate();
   const toast = useToast();
   const location = useLocation();
-  const navigate = useNavigate();
   const [transactions, setTransactions] = useState([]);
   const [showModal, setShowModal] = useState(false);
 
@@ -175,9 +173,6 @@ export default function Transactions() {
     }
   };
 
-
-  /* ================= DELETE ================= */
-
   const handleDelete = async (t) => {
     const url = t.type === "income" ? `/api/incomes/${t.backendId}` : `/api/expenses/${t.backendId}`;
     await api.del(url);
@@ -186,7 +181,6 @@ export default function Transactions() {
       toast("Entry deleted", { type: "success" });
   };
 
-  /* ================= DERIVED ================= */
 
   const searchQuery = useMemo(() => {
     try {
@@ -197,7 +191,6 @@ export default function Transactions() {
     }
   }, [location.search]);
 
-  // If URL contains an empty `q` param (e.g. ?q=), remove it so we show all data.
   useEffect(() => {
     try {
       const p = new URLSearchParams(location.search);
