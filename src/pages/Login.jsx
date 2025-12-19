@@ -2,31 +2,86 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Lock, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { signup, login } from "../api/auth";
 
 export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const [signupData, setSignupData] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
+
+  const [loginData, setLoginData] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [loadingLogin, setLoadingLogin] = useState(false);
+  const [loadingSignup, setLoadingSignup] = useState(false);
+
+  const [toast, setToast] = useState(null);
+
+  const showToast = (type, message) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSignup = async (e) => {
     e.preventDefault();
-    navigate("/dashboard"); // temporary redirect after login/signup
+    setLoadingSignup(true);
+    try {
+      const res = await signup(signupData);
+      localStorage.setItem("token", res.token);
+      showToast("success", "Account created successfully");
+      navigate("/dashboard");
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setLoadingSignup(false);
+    }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoadingLogin(true);
+    try {
+      const res = await login(loginData);
+      localStorage.setItem("token", res.token);
+      navigate("/dashboard");
+    } catch (err) {
+      showToast("error", err.message);
+    } finally {
+      setLoadingLogin(false);
+    }
   };
 
   return (
     <div className="relative flex h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-      {/* Animated gradient blobs */}
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${
+            toast.type === "success"
+              ? "bg-emerald-600 text-white"
+              : "bg-rose-600 text-white"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-32 -left-20 h-72 w-72 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-30 blur-3xl animate-pulse" />
         <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-gradient-to-tl from-pink-500 via-purple-600 to-blue-500 opacity-20 blur-3xl animate-pulse" />
       </div>
 
-      {/* 3D Card Container */}
       <motion.div
         className="relative z-10 w-[400px] min-h-[540px] [transform-style:preserve-3d]"
         animate={{ rotateY: isSignUp ? 180 : 0 }}
         transition={{ duration: 0.8, ease: [0.45, 0, 0.55, 1] }}
       >
-        {/* LOGIN SIDE */}
         <motion.div
           className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-gray-700 bg-gray-900/60 p-8 backdrop-blur-xl shadow-2xl"
           style={{ backfaceVisibility: "hidden" }}
@@ -40,51 +95,54 @@ export default function Login() {
               <p className="text-gray-400 text-sm">Sign in to continue to MONETIQ</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="text-sm font-medium text-gray-300">Email</label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm text-gray-100 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 outline-none transition-all duration-200"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-300">Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm text-gray-100 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 outline-none transition-all duration-200"
-                />
-              </div>
+            <form onSubmit={handleLogin} className="space-y-5">
+              <input
+                type="email"
+                placeholder="you@example.com"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm"
+                value={loginData.email}
+                onChange={(e) =>
+                  setLoginData({ ...loginData, email: e.target.value })
+                }
+              />
+              <input
+                type="password"
+                placeholder="••••••••"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm"
+                value={loginData.password}
+                onChange={(e) =>
+                  setLoginData({ ...loginData, password: e.target.value })
+                }
+              />
 
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                disabled={loadingLogin}
                 type="submit"
-                className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:shadow-indigo-500/25"
+                className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 py-3 font-semibold flex items-center justify-center gap-2"
               >
+                {loadingLogin && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                )}
                 Sign In
               </motion.button>
             </form>
           </div>
 
-          <p className="mt-6 text-center text-sm text-gray-400">
+          <p className="text-center text-sm text-gray-400">
             Don’t have an account?{" "}
             <button
               type="button"
               onClick={() => setIsSignUp(true)}
-              className="text-indigo-400 hover:text-indigo-300 font-medium"
+              className="text-indigo-400"
             >
               Sign up
             </button>
           </p>
         </motion.div>
 
-        {/* SIGNUP SIDE */}
         <motion.div
-          className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-gray-700 bg-gray-900/60 p-8 backdrop-blur-xl shadow-2xl rotate-y-180"
-          style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
+          className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-gray-700 bg-gray-900/60 p-8 backdrop-blur-xl shadow-2xl"
+          style={{ transform: "rotateY(180deg)", backfaceVisibility: "hidden" }}
         >
           <div>
             <div className="flex flex-col items-center space-y-2 mb-8">
@@ -95,49 +153,54 @@ export default function Login() {
               <p className="text-gray-400 text-sm">Join MONETIQ in seconds</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-300">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm text-gray-100 focus:border-pink-500 focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-200"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-300">Email</label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm text-gray-100 focus:border-pink-500 focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-200"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-300">Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm text-gray-100 focus:border-pink-500 focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-200"
-                />
-              </div>
+            <form onSubmit={handleSignup} className="space-y-4">
+              <input
+                type="text"
+                placeholder="John Doe"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm"
+                value={signupData.name}
+                onChange={(e) =>
+                  setSignupData({ ...signupData, name: e.target.value })
+                }
+              />
+              <input
+                type="email"
+                placeholder="you@example.com"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm"
+                value={signupData.email}
+                onChange={(e) =>
+                  setSignupData({ ...signupData, email: e.target.value })
+                }
+              />
+              <input
+                type="password"
+                placeholder="••••••••"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-sm"
+                value={signupData.password}
+                onChange={(e) =>
+                  setSignupData({ ...signupData, password: e.target.value })
+                }
+              />
 
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                disabled={loadingSignup}
                 type="submit"
-                className="w-full rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:shadow-pink-500/25"
+                className="w-full rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 py-3 font-semibold flex items-center justify-center gap-2"
               >
+                {loadingSignup && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                )}
                 Sign Up
               </motion.button>
             </form>
           </div>
 
-          <p className="mt-6 text-center text-sm text-gray-400">
+          <p className="text-center text-sm text-gray-400">
             Already have an account?{" "}
             <button
               type="button"
               onClick={() => setIsSignUp(false)}
-              className="text-pink-400 hover:text-pink-300 font-medium"
+              className="text-pink-400"
             >
               Login
             </button>

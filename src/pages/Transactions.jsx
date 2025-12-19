@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -20,15 +20,24 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
+
+const authHeaders = () => {
+  const token = localStorage.getItem("token");
+  return token
+    ? {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    }
+    : null;
+};
+
+
 
 export default function Transactions() {
-  const [transactions, setTransactions] = useState([
-    { id: 1, type: "income", category: "Salary", amount: 5000, date: "2025-10-01", notes: "Monthly salary" },
-    { id: 2, type: "expense", category: "Food", amount: 120, date: "2025-10-02", notes: "Dinner" },
-    { id: 3, type: "expense", category: "Transport", amount: 60, date: "2025-10-03", notes: "Uber" },
-    { id: 4, type: "income", category: "Freelance", amount: 850, date: "2025-10-06", notes: "Web project" },
-    { id: 5, type: "expense", category: "Shopping", amount: 300, date: "2025-10-10", notes: "Clothes" },
-  ]);
+  const navigate = useNavigate();
+  const [transactions, setTransactions] = useState([]);
+  const [showModal, setShowModal] = useState(false);
 
   const [filters, setFilters] = useState({
     type: "all",
@@ -37,26 +46,164 @@ export default function Transactions() {
     endDate: "",
   });
 
-  const [showModal, setShowModal] = useState(false);
-  const [newTransaction, setNewTransaction] = useState({
-    type: "income",
-    category: "",
+  const [transactionType, setTransactionType] = useState("income");
+
+  const [newIncome, setNewIncome] = useState({
+    source: "",
     amount: "",
     date: "",
     notes: "",
   });
 
-  const handleAdd = () => {
-    if (!newTransaction.amount || !newTransaction.category || !newTransaction.date) return;
-    setTransactions([
-      ...transactions,
-      { ...newTransaction, id: Date.now(), amount: parseFloat(newTransaction.amount) },
+  const [newExpense, setNewExpense] = useState({
+    category: "",
+    amount: "",
+    date: "",
+    description: "",
+  });
+
+
+  /* ================= AUTH + LOAD ================= */
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      navigate("/");
+      return;
+    }
+
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const safeFetch = async (url) => {
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error("unauthorized");
+      return res.json();
+    };
+
+    Promise.all([
+      safeFetch("/api/incomes"),
+      safeFetch("/api/expenses"),
+    ])
+      .then(([incomes, expenses]) => {
+        setTransactions([
+          ...incomes.map((i) => ({
+            id: `i-${i.id}`,
+            backendId: i.id,
+            type: "income",
+            category: i.source,
+            amount: Number(i.amount),
+            date: i.date,
+            notes: i.notes || "",
+          })),
+          ...expenses.map((e) => ({
+            id: `e-${e.id}`,
+            backendId: e.id,
+            type: "expense",
+            category: e.category,
+            amount: Number(e.amount),
+            date: e.date,
+            notes: e.description || "",
+          })),
+        ]);
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+        navigate("/");
+      });
+  }, [navigate]);
+
+  /* ================= CREATE ================= */
+
+  const handleAdd = async () => {
+    const headers = authHeaders();
+    if (!headers) {
+      navigate("/");
+      return;
+    }
+
+    const isIncome = transactionType === "income";
+    const url = isIncome ? "/api/incomes" : "/api/expenses";
+    const payload = isIncome
+      ? {
+        source: newIncome.source,
+        amount: Number(newIncome.amount),
+        date: newIncome.date,
+        notes: newIncome.notes,
+      }
+      : {
+        category: newExpense.category,
+        amount: Number(newExpense.amount),
+        date: newExpense.date,
+        description: newExpense.description,
+      };
+
+    if (
+      payload.amount === "" ||
+      Number.isNaN(payload.amount) ||
+      !payload.date ||
+      (isIncome ? !payload.source.trim() : !payload.category.trim())
+    ) return;
+
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 401) {
+      console.error("401 on expense add - check backend auth");
+      localStorage.removeItem("token");
+      navigate("/");
+      return;
+    }
+
+    if (!res.ok) {
+      console.error("Failed to add:", res.status, await res.text());
+      return;
+    }
+
+    if (!res.ok) return;
+
+    const created = await res.json();
+
+    setTransactions((prev) => [
+      ...prev,
+      {
+        id: `${isIncome ? "i" : "e"}-${created.id}`,
+        backendId: created.id,
+        type: transactionType,
+        category: isIncome ? created.source : created.category,
+        amount: Number(created.amount),
+        date: created.date,
+        notes: isIncome ? created.notes || "" : created.description || "",
+      },
     ]);
-    setNewTransaction({ type: "income", category: "", amount: "", date: "", notes: "" });
+
+    setNewIncome({ source: "", amount: "", date: "", notes: "" });
+    setNewExpense({ category: "", amount: "", date: "", description: "" });
     setShowModal(false);
   };
 
-  const handleDelete = (id) => setTransactions(transactions.filter((t) => t.id !== id));
+
+  /* ================= DELETE ================= */
+
+  const handleDelete = async (t) => {
+    const token = localStorage.getItem("token");
+    const url =
+      t.type === "income"
+        ? `/api/incomes/${t.backendId}`
+        : `/api/expenses/${t.backendId}`;
+
+    await fetch(url, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    setTransactions((prev) => prev.filter((x) => x.id !== t.id));
+  };
+
+  /* ================= DERIVED ================= */
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
@@ -70,28 +217,34 @@ export default function Transactions() {
   }, [transactions, filters]);
 
   const totals = useMemo(() => {
-    const income = filteredTransactions.filter((t) => t.type === "income").reduce((a, b) => a + b.amount, 0);
-    const expense = filteredTransactions.filter((t) => t.type === "expense").reduce((a, b) => a + b.amount, 0);
+    const income = filteredTransactions
+      .filter((t) => t.type === "income")
+      .reduce((a, b) => a + b.amount, 0);
+    const expense = filteredTransactions
+      .filter((t) => t.type === "expense")
+      .reduce((a, b) => a + b.amount, 0);
     return { income, expense, net: income - expense };
   }, [filteredTransactions]);
 
-  const categories = [...new Set(transactions.map((t) => t.category))];
-
-  // Category data for visualization
   const categorySpending = useMemo(() => {
-    const data = {};
+    const map = {};
     transactions.forEach((t) => {
-      if (t.type === "expense") data[t.category] = (data[t.category] || 0) + t.amount;
+      if (t.type === "expense") {
+        map[t.category] = (map[t.category] || 0) + t.amount;
+      }
     });
-    return Object.entries(data).map(([category, value]) => ({ category, value }));
+    return Object.entries(map).map(([category, value]) => ({ category, value }));
   }, [transactions]);
 
-  const weeklyTrend = [
-    { week: "Week 1", income: 1500, expense: 1000 },
-    { week: "Week 2", income: 1800, expense: 1300 },
-    { week: "Week 3", income: 2000, expense: 1600 },
-    { week: "Week 4", income: 1600, expense: 1200 },
-  ];
+  const weeklyTrend = useMemo(() => {
+    const weeks = {};
+    transactions.forEach((t) => {
+      const week = `Week ${Math.ceil(new Date(t.date).getDate() / 7)}`;
+      if (!weeks[week]) weeks[week] = { week, income: 0, expense: 0 };
+      weeks[week][t.type] += t.amount;
+    });
+    return Object.values(weeks);
+  }, [transactions]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#090a0c] via-[#121315] to-[#090a0c] text-gray-100 px-4 py-6 sm:px-6 md:px-10">
@@ -177,7 +330,7 @@ export default function Transactions() {
             <Filter size={18} className="text-sky-400" /> Category Insights
           </h3>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart2 />
+            {/* <BarChart2 /> */}
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart layout="vertical" data={categorySpending} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
@@ -245,7 +398,7 @@ export default function Transactions() {
                   <td className="px-4 py-3">{t.date}</td>
                   <td className="px-4 py-3 text-gray-400 truncate max-w-[150px]">{t.notes}</td>
                   <td className="px-4 py-3 text-center">
-                    <button onClick={() => handleDelete(t.id)} className="text-gray-400 hover:text-rose-500 transition">
+                    <button onClick={() => handleDelete(t)} className="text-gray-400 hover:text-rose-500 transition">
                       <Trash2 size={16} />
                     </button>
                   </td>
@@ -276,57 +429,100 @@ export default function Transactions() {
                   {["income", "expense"].map((type) => (
                     <button
                       key={type}
-                      onClick={() => setNewTransaction({ ...newTransaction, type })}
-                      className={`flex-1 py-2 rounded-lg border ${
-                        newTransaction.type === type
-                          ? type === "income"
-                            ? "border-emerald-400 text-emerald-400"
-                            : "border-rose-400 text-rose-400"
-                          : "border-gray-700 text-gray-400"
-                      }`}
+                      onClick={() => setTransactionType(type)}
+                      className={`flex-1 py-2 rounded-lg border ${transactionType === type
+                        ? type === "income"
+                          ? "border-emerald-400 text-emerald-400"
+                          : "border-rose-400 text-rose-400"
+                        : "border-gray-700 text-gray-400"
+                        }`}
                     >
                       {type.charAt(0).toUpperCase() + type.slice(1)}
                     </button>
                   ))}
                 </div>
 
-                {["category", "amount", "date"].map((field) => (
-                  <input
-                    key={field}
-                    type={field === "amount" ? "number" : field === "date" ? "date" : "text"}
-                    placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-                    value={newTransaction[field]}
-                    onChange={(e) => setNewTransaction({ ...newTransaction, [field]: e.target.value })}
-                    className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                ))}
+                {transactionType === "income" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Income Source"
+                      value={newIncome.source}
+                      onChange={(e) => setNewIncome({ ...newIncome, source: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={newIncome.amount}
+                      onChange={(e) => setNewIncome({ ...newIncome, amount: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <input
+                      type="date"
+                      value={newIncome.date}
+                      onChange={(e) => setNewIncome({ ...newIncome, date: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <textarea
+                      placeholder="Notes (optional)"
+                      value={newIncome.notes}
+                      onChange={(e) => setNewIncome({ ...newIncome, notes: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                  </>
+                )}
 
-                <textarea
-                  placeholder="Notes (optional)"
-                  value={newTransaction.notes}
-                  onChange={(e) => setNewTransaction({ ...newTransaction, notes: e.target.value })}
-                  className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
+                {transactionType === "expense" && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Expense Category"
+                      value={newExpense.category}
+                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={newExpense.amount}
+                      onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <input
+                      type="date"
+                      value={newExpense.date}
+                      onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                    <textarea
+                      placeholder="Description"
+                      value={newExpense.description}
+                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                      className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
+                    />
+                  </>
+                )}
+              </div>
 
-                <div className="flex justify-end gap-2 mt-4">
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAdd}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium shadow-md hover:shadow-emerald-500/30 transition-all"
-                  >
-                    Add
-                  </button>
-                </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdd}
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium shadow-md hover:shadow-emerald-500/30 transition-all"
+                >
+                  Add
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </div >
   );
 }
