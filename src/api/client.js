@@ -1,36 +1,58 @@
-import { useToast } from "../components/common/Toast";
-
 const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_BACKEND) || "";
 
-function authHeaders() {
+function authHeaders(isFormData = false) {
   const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : null;
+  if (!token) return null;
+
+  if (isFormData) {
+    return { Authorization: `Bearer ${token}` };
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, options = {}) {
   const url = path.startsWith("/") && API_BASE ? `${API_BASE}${path}` : path;
-  const headers = authHeaders();
-  const toast = (typeof window !== 'undefined' && window.__SHOW_TOAST__) || null;
+  const isFormData = body instanceof FormData;
+  const headers = authHeaders(isFormData);
+
+  const toast =
+    typeof window !== "undefined" && window.__SHOW_TOAST__
+      ? window.__SHOW_TOAST__
+      : null;
 
   if (!headers) {
     toast && toast("You must be logged in to perform this action", { type: "error" });
     throw new Error("unauthenticated");
   }
 
-  const opts = { method, headers };
-  if (body !== undefined) opts.body = JSON.stringify(body);
+  const opts = {
+    method,
+    headers,
+    ...options,
+  };
+
+  if (body !== undefined) {
+    opts.body = isFormData ? body : JSON.stringify(body);
+  }
 
   const res = await fetch(url, opts);
+
   if (res.status === 401) {
-    toast && toast("You have requested an unauthorized action, please refrain from doing that as the application is under development!", { type: "error" });
+    toast && toast("Unauthorized action", { type: "error" });
     throw new Error("unauthorized");
   }
+
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     const err = new Error(txt || `HTTP ${res.status}`);
     err.status = res.status;
     throw err;
   }
+
   const text = await res.text().catch(() => "");
   return text ? JSON.parse(text) : null;
 }

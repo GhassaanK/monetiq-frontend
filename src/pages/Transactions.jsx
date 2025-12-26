@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { classifyReceiptImage } from "../api/ai";
+import { analyzeExpenses } from "../api/ai";
 import {
   Plus,
   Trash2,
@@ -36,9 +38,24 @@ const authHeaders = () => {
     : null;
 };
 
+const formatPKR = (value = 0) => {
+  const abs = Math.abs(value);
+
+  if (abs >= 1_000_000_000) return `PKR ${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `PKR ${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `PKR ${(value / 1_000).toFixed(1)}k`;
+
+  return `PKR ${value.toFixed(0)}`;
+};
+
 
 
 export default function Transactions() {
+
+  const [monthlyAnalysis, setMonthlyAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
   const navigate = useNavigate();
   const toast = useToast();
   const location = useLocation();
@@ -58,15 +75,47 @@ export default function Transactions() {
     source: "",
     amount: "",
     date: "",
-    notes: "",
+    category: "",
   });
 
+
   const [newExpense, setNewExpense] = useState({
-    category: "",
+    title: "",
     amount: "",
+    category: "",
     date: "",
-    description: "",
   });
+
+  const fetchIncomes = async () => {
+    const incomes = await api.get("/api/incomes");
+
+    return (Array.isArray(incomes) ? incomes : []).map((i) => ({
+      id: `i-${i.id}`,
+      backendId: i.id,
+      type: "income",
+      category: i.category,
+      title: i.source, // ✅ THIS IS THE FIX
+      amount: Number(i.amount),
+      date: i.date,
+    }));
+  };
+
+
+
+  const fetchExpenses = async () => {
+    const expenses = await api.get("/api/expenses");
+    return (Array.isArray(expenses) ? expenses : []).map((e) => ({
+      id: `e-${e.id}`,
+      backendId: e.id,
+      type: "expense",
+      category: e.category,
+      amount: Number(e.amount),
+      date: e.date,
+      title: e.title,
+    }));
+  };
+
+
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -75,62 +124,124 @@ export default function Transactions() {
       return;
     }
 
-    Promise.all([api.get('/api/incomes'), api.get('/api/expenses')])
-      .then(([incomes, expenses]) => {
-        setTransactions([
-          ...(Array.isArray(incomes) ? incomes : []).map((i) => ({
-            id: `i-${i.id}`,
-            backendId: i.id,
-            type: "income",
-            category: i.source,
-            amount: Number(i.amount),
-            date: i.date,
-            notes: i.notes || "",
-          })),
-          ...(Array.isArray(expenses) ? expenses : []).map((e) => ({
-            id: `e-${e.id}`,
-            backendId: e.id,
-            type: "expense",
-            category: e.category,
-            amount: Number(e.amount),
-            date: e.date,
-            notes: e.description || "",
-          })),
+    const loadData = async () => {
+      try {
+        const [incomeTx, expenseTx] = await Promise.all([
+          fetchIncomes(),
+          fetchExpenses(),
         ]);
-      })
-      .catch(() => {
-        toast("You have requested an unauthorized action, please refrain from doing that as the application is under development!", { type: "error" });
-      });
+
+        setTransactions([...incomeTx, ...expenseTx]);
+      } catch (err) {
+        toast(
+          "You have requested an unauthorized action, please refrain from doing that as the application is under development!",
+          { type: "error" }
+        );
+      }
+    };
+
+    loadData();
   }, [navigate]);
+
+  useEffect(() => {
+    const expensesForMonth = getCurrentMonthExpenses(transactions);
+
+    if (expensesForMonth.length === 0) return;
+
+    setAnalysisLoading(true);
+
+    analyzeExpenses(expensesForMonth)
+      .then((res) => {
+        setMonthlyAnalysis(res);
+      })
+      .catch((err) => {
+        console.error("AI analysis failed", err);
+      })
+      .finally(() => {
+        setAnalysisLoading(false);
+      });
+  }, [transactions]);
+
+
+  const getCurrentMonthExpenses = (txs) => {
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+
+    return txs
+      .filter((t) => t.type === "expense")
+      .filter((t) => {
+        const d = new Date(t.date);
+        return d.getMonth() === m && d.getFullYear() === y;
+      })
+      .map((t) => ({
+        title: t.title,
+        amount: t.amount,
+      }));
+  };
+
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setReceiptLoading(true);
+    setReceiptError("");
+
+    try {
+      const res = await classifyReceiptImage(file);
+
+      setNewExpense((prev) => ({
+        ...prev,
+        title: prev.title || res.classification || "",
+      }));
+
+    } catch (err) {
+      console.error(err);
+      setReceiptError("Failed to read receipt");
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
 
   const handleAddIncome = async () => {
     const rawAmount = newIncome.amount;
     const amount = Number(rawAmount);
-    if (rawAmount === "" || !Number.isFinite(amount) || !newIncome.date || !newIncome.source.trim()) return;
+
+    if (
+      rawAmount === "" ||
+      !Number.isFinite(amount) ||
+      !newIncome.date ||
+      !newIncome.source.trim() ||
+      !newIncome.category.trim()
+    ) return;
 
     const payload = {
       source: newIncome.source,
       amount,
       date: newIncome.date,
-      notes: newIncome.notes,
+      category: newIncome.category,
     };
 
     try {
-      const created = await api.post('/api/incomes', payload);
+      const created = await api.post("/api/incomes", payload);
+
       setTransactions((prev) => [
         ...prev,
         {
           id: `i-${created.id}`,
           backendId: created.id,
           type: "income",
-          category: created.source,
+          category: created.category,
+          title: created.source,
           amount: Number(created.amount),
           date: created.date,
-          notes: created.notes || "",
-        },
+        }
+        ,
       ]);
+
       toast("Income added", { type: "success" });
-      setNewIncome({ source: "", amount: "", date: "", notes: "" });
+      setNewIncome({ source: "", amount: "", date: "", category: "" });
       setShowModal(false);
     } catch (err) {
       console.error("Failed to add income", err);
@@ -138,17 +249,19 @@ export default function Transactions() {
     }
   };
 
+
   const handleAddExpense = async () => {
     const rawAmount = newExpense.amount;
     const amount = Number(rawAmount);
     if (rawAmount === "" || !Number.isFinite(amount) || !newExpense.date || !newExpense.category.trim()) return;
 
     const payload = {
+      title: newExpense.title,
       category: newExpense.category,
       amount,
       date: newExpense.date,
-      description: newExpense.description,
     };
+
 
     try {
       const created = await api.post('/api/expenses', payload);
@@ -159,11 +272,12 @@ export default function Transactions() {
           backendId: created.id,
           type: "expense",
           category: created.category,
+          title: created.title,
           amount: Number(created.amount),
           date: created.date,
-          notes: created.description || "",
         },
       ]);
+
       toast("Expense added", { type: "success" });
       setNewExpense({ category: "", amount: "", date: "", description: "" });
       setShowModal(false);
@@ -178,7 +292,7 @@ export default function Transactions() {
     await api.del(url);
 
     setTransactions((prev) => prev.filter((x) => x.id !== t.id));
-      toast("Entry deleted", { type: "success" });
+    toast("Entry deleted", { type: "success" });
   };
 
 
@@ -197,7 +311,7 @@ export default function Transactions() {
       if (p.has("q") && (p.get("q") || "").trim() === "") {
         navigate(location.pathname, { replace: true });
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [location.search, location.pathname, navigate]);
 
   const filteredTransactions = useMemo(() => {
@@ -208,7 +322,7 @@ export default function Transactions() {
         (!filters.startDate || t.date >= filters.startDate) &&
         (!filters.endDate || t.date <= filters.endDate);
       const q = searchQuery;
-      const matchesQuery = !q || [t.category, t.notes, t.type, String(t.amount), t.date]
+      const matchesQuery = !q || [t.title, t.category, t.type, String(t.amount), t.date]
         .some((f) => f && f.toString().toLowerCase().includes(q));
 
       return matchesType && matchesCategory && withinDate && matchesQuery;
@@ -246,7 +360,6 @@ export default function Transactions() {
   }, [transactions]);
 
   const monthlyData = useMemo(() => {
-    // build last 6 months buckets
     const buckets = {};
     const labels = [];
     const now = new Date();
@@ -265,7 +378,7 @@ export default function Transactions() {
         if (buckets[key]) {
           buckets[key][t.type] += Number(t.amount) || 0;
         }
-      } catch (e) {}
+      } catch (e) { }
     });
 
     return Object.keys(buckets).map((k) => buckets[k]);
@@ -321,7 +434,7 @@ export default function Transactions() {
               <item.icon size={22} className={`text-${item.color}-400`} />
             </div>
             <h3 className={`text-xl sm:text-2xl font-semibold mt-2 text-${item.color}-400`}>
-              ${item.value.toFixed(2)}
+              {formatPKR(item.value)}
             </h3>
           </motion.div>
         ))}
@@ -341,7 +454,10 @@ export default function Transactions() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
               <XAxis dataKey="month" stroke="#9ca3af" />
               <YAxis stroke="#9ca3af" />
-              <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
+              <Tooltip
+                formatter={(v) => formatPKR(v)}
+                contentStyle={{ backgroundColor: "#1f2937", border: "none" }}
+              />
               <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={20} />
               <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} />
             </ComposedChart>
@@ -361,7 +477,10 @@ export default function Transactions() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
               <XAxis type="number" stroke="#9ca3af" />
               <YAxis dataKey="category" type="category" stroke="#9ca3af" />
-              <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
+              <Tooltip
+                formatter={(v) => formatPKR(v)}
+                contentStyle={{ backgroundColor: "#1f2937", border: "none" }}
+              />
               <Bar dataKey="value" fill="#38bdf8" radius={[0, 6, 6, 0]} barSize={15} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -379,7 +498,10 @@ export default function Transactions() {
             <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
             <XAxis dataKey="week" stroke="#9ca3af" />
             <YAxis stroke="#9ca3af" />
-            <Tooltip contentStyle={{ backgroundColor: "#1f2937", border: "none" }} />
+            <Tooltip
+              formatter={(v) => formatPKR(v)}
+              contentStyle={{ backgroundColor: "#1f2937", border: "none" }}
+            />
             <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={20} />
             <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} />
           </ComposedChart>
@@ -395,7 +517,7 @@ export default function Transactions() {
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Amount</th>
                 <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Notes</th>
+                <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
@@ -418,9 +540,11 @@ export default function Transactions() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{t.category}</td>
-                  <td className="px-4 py-3">${t.amount.toFixed(2)}</td>
+                  <td className="px-4 py-3">{formatPKR(t.amount)}</td>
                   <td className="px-4 py-3">{t.date}</td>
-                  <td className="px-4 py-3 text-gray-400 truncate max-w-[150px]">{t.notes}</td>
+                  <td className="px-4 py-3">
+                    {t.title}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => handleDelete(t)} className="text-gray-400 hover:text-rose-500 transition">
                       <Trash2 size={16} />
@@ -458,6 +582,7 @@ export default function Transactions() {
                       onChange={(e) => setNewIncome({ ...newIncome, source: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
+
                     <input
                       type="number"
                       placeholder="Amount"
@@ -465,28 +590,51 @@ export default function Transactions() {
                       onChange={(e) => setNewIncome({ ...newIncome, amount: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
+
                     <input
                       type="date"
                       value={newIncome.date}
                       onChange={(e) => setNewIncome({ ...newIncome, date: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
-                    <textarea
-                      placeholder="Notes (optional)"
-                      value={newIncome.notes}
-                      onChange={(e) => setNewIncome({ ...newIncome, notes: e.target.value })}
+
+                    <input
+                      type="text"
+                      placeholder="Category"
+                      value={newIncome.category}
+                      onChange={(e) => setNewIncome({ ...newIncome, category: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
+
                   </>
                 )}
 
                 {transactionType === "expense" && (
                   <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-400">Upload receipt (optional)</label>
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleReceiptUpload}
+                        className="w-full text-sm text-gray-300"
+                      />
+
+                      {receiptLoading && (
+                        <p className="text-xs text-emerald-400">Reading receipt...</p>
+                      )}
+
+                      {receiptError && (
+                        <p className="text-xs text-rose-400">{receiptError}</p>
+                      )}
+                    </div>
+
                     <input
                       type="text"
-                      placeholder="Expense Category"
-                      value={newExpense.category}
-                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
+                      placeholder="Expense Title"
+                      value={newExpense.title}
+                      onChange={(e) => setNewExpense({ ...newExpense, title: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
                     <input
@@ -503,9 +651,9 @@ export default function Transactions() {
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
                     <textarea
-                      placeholder="Description"
-                      value={newExpense.description}
-                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                      placeholder="Category"
+                      value={newExpense.category}
+                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
                       className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-200"
                     />
                   </>

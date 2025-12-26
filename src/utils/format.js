@@ -1,6 +1,6 @@
 export function fmtCurrency(n) {
   const num = Number(n) || 0;
-  return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `PKR ${num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
 export function fmtDate(d) {
