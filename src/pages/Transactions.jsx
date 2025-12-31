@@ -11,7 +11,11 @@ import {
   PiggyBank,
   Filter,
   BarChart2,
+  Sparkles,
+  Bot,
+  X,
 } from "lucide-react";
+
 import {
   ComposedChart,
   Bar,
@@ -52,6 +56,8 @@ const formatPKR = (value = 0) => {
 
 export default function Transactions() {
 
+  const [aiOpen, setAiOpen] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState([]);
   const [monthlyAnalysis, setMonthlyAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -68,6 +74,15 @@ export default function Transactions() {
     startDate: "",
     endDate: "",
   });
+
+  const toggleExpenseSelection = (id) => {
+    setSelectedExpenseIds((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id]
+    );
+  };
+
 
   const [transactionType, setTransactionType] = useState("income");
 
@@ -178,6 +193,30 @@ export default function Transactions() {
         title: t.title,
         amount: t.amount,
       }));
+  };
+
+  const handleAnalyzeSelected = async () => {
+    const selectedExpenses = transactions
+      .filter((t) => selectedExpenseIds.includes(t.id))
+      .map((t) => ({
+        title: t.title,
+        amount: t.amount,
+      }));
+
+    if (selectedExpenses.length === 0) return;
+
+    setAiOpen(true);
+    setAnalysisLoading(true);
+
+    try {
+      const res = await analyzeExpenses(selectedExpenses);
+      setMonthlyAnalysis(res);
+    } catch (err) {
+      console.error("AI analysis failed", err);
+    } finally {
+      setAnalysisLoading(false);
+      setSelectedExpenseIds([]);
+    }
   };
 
   const handleReceiptUpload = async (e) => {
@@ -508,11 +547,27 @@ export default function Transactions() {
         </ResponsiveContainer>
       </motion.div>
 
+      {selectedExpenseIds.length > 0 && (
+        <div className="flex justify-end mb-4">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleAnalyzeSelected}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-medium shadow-lg"
+          >
+            <Bot size={16} />
+            Analyze these expenses
+          </motion.button>
+        </div>
+      )}
+
+
       <div className="overflow-x-auto rounded-2xl border border-gray-800 bg-gray-900/60 backdrop-blur-md shadow-md">
         <div className="min-w-full w-max sm:w-full">
           <table className="w-full text-left text-sm text-gray-300">
             <thead className="bg-gray-800/70 text-gray-400 text-xs uppercase tracking-wide">
               <tr>
+                <th className="px-4 py-3 text-center">Select</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Amount</th>
@@ -529,6 +584,16 @@ export default function Transactions() {
                   animate={{ opacity: 1, y: 0 }}
                   className="border-t border-gray-800 hover:bg-gray-800/50 transition"
                 >
+                  <td className="px-4 py-3 text-center">
+                    {t.type === "expense" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedExpenseIds.includes(t.id)}
+                        onChange={() => toggleExpenseSelection(t.id)}
+                        className="accent-sky-500 w-4 h-4"
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-3 flex items-center gap-2">
                     {t.type === "income" ? (
                       <ArrowUpRight size={16} className="text-emerald-400" />
@@ -683,6 +748,111 @@ export default function Transactions() {
           </motion.div>
         )}
       </AnimatePresence>
+      <motion.button
+        onClick={() => setAiOpen(true)}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed right-5 bottom-6 z-40 flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 shadow-xl"
+      >
+        <Sparkles size={22} className="text-white" />
+      </motion.button>
+
+      <AnimatePresence>
+        {aiOpen && (
+          <motion.div
+            initial={{ x: 420, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 420, opacity: 0 }}
+            transition={{ type: "spring", damping: 22 }}
+            className="fixed top-0 right-0 h-full w-full sm:w-[420px] bg-gray-900 border-l border-gray-800 z-50 flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="font-semibold text-sky-400 flex items-center gap-2">
+                <Bot size={18} /> AI Spending Insights
+              </h3>
+              <button
+                onClick={() => setAiOpen(false)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-sm">
+              {analysisLoading && (
+                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-gray-300">
+                  Analyzing your spending...
+                </div>
+              )}
+
+              {!analysisLoading && !monthlyAnalysis && (
+                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-gray-400">
+                  No insights yet. Add some expenses this month.
+                </div>
+              )}
+
+              {!analysisLoading && monthlyAnalysis && (
+                <>
+                  {/* Summary */}
+                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                    <p className="text-emerald-400 font-medium mb-1">Summary</p>
+                    <p className="text-gray-300">
+                      {monthlyAnalysis.summary.verdict}
+                    </p>
+
+                    <div className="mt-3 text-xs text-gray-400 space-y-1">
+                      <p>Total Spend: {formatPKR(monthlyAnalysis.summary.total_spend)}</p>
+                      <p>Possible Savings: {formatPKR(monthlyAnalysis.summary.total_savings_found)}</p>
+                    </div>
+                  </div>
+
+                  {/* Expense Cards */}
+                  <div className="space-y-3">
+                    {monthlyAnalysis.expenses.map((e, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-gray-800/80 rounded-xl p-4 border border-gray-700"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-medium text-gray-200">{e.title}</p>
+                          <span
+                            className={
+                              "text-xs px-2 py-0.5 rounded-full " +
+                              (e.tag === "Negative"
+                                ? "bg-rose-500/20 text-rose-400"
+                                : "bg-sky-500/20 text-sky-400")
+                            }
+                          >
+                            {e.tag}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-gray-400 mb-2">
+                          {e.is_essential ? "Essential expense" : "Non essential"}
+                        </p>
+
+                        <p className="text-gray-300 text-sm">
+                          {e.note}
+                        </p>
+
+                        {e.can_cut > 0 && (
+                          <p className="text-xs text-emerald-400 mt-2">
+                            Possible cut: {formatPKR(e.can_cut)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
     </div >
   );
 }
