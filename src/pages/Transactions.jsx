@@ -210,7 +210,9 @@ export default function Transactions() {
 
     try {
       const res = await analyzeExpenses(selectedExpenses);
+      console.log(res);
       setMonthlyAnalysis(res);
+
     } catch (err) {
       console.error("AI analysis failed", err);
     } finally {
@@ -748,14 +750,24 @@ export default function Transactions() {
           </motion.div>
         )}
       </AnimatePresence>
-      <motion.button
-        onClick={() => setAiOpen(true)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed right-5 bottom-6 z-40 flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 shadow-xl"
-      >
-        <Sparkles size={22} className="text-white" />
-      </motion.button>
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-700/50">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 flex items-center justify-center">
+          <Bot size={18} className="text-white" />
+        </div>
+
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-100">Spending Assistant</p>
+          <p className="text-xs text-gray-400">Analyzing your expenses</p>
+        </div>
+
+        <button
+          onClick={() => setAiOpen(false)}
+          className="text-gray-400 hover:text-gray-200"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
 
       <AnimatePresence>
         {aiOpen && (
@@ -766,6 +778,7 @@ export default function Transactions() {
             transition={{ type: "spring", damping: 22 }}
             className="fixed top-0 right-0 h-full w-full sm:w-[420px] bg-gray-900 border-l border-gray-800 z-50 flex flex-col"
           >
+
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
               <h3 className="font-semibold text-sky-400 flex items-center gap-2">
@@ -782,9 +795,16 @@ export default function Transactions() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-sm">
               {analysisLoading && (
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-gray-300">
-                  Analyzing your spending...
+                <div className="flex items-center gap-3 bg-gray-800 rounded-2xl px-4 py-3 text-sm text-gray-300">
+                  <motion.span
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ repeat: Infinity, duration: 1.4 }}
+                  >
+                    Thinking
+                  </motion.span>
+                  <span className="text-sky-400">•••</span>
                 </div>
+
               )}
 
               {!analysisLoading && !monthlyAnalysis && (
@@ -795,54 +815,60 @@ export default function Transactions() {
 
               {!analysisLoading && monthlyAnalysis && (
                 <>
-                  {/* Summary */}
-                  <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <p className="text-emerald-400 font-medium mb-1">Summary</p>
-                    <p className="text-gray-300">
-                      {monthlyAnalysis.summary.verdict}
-                    </p>
+                  <div className="flex items-start gap-2">
+                    <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center mt-1">
+                      <Bot size={14} className="text-white" />
+                    </div>
 
-                    <div className="mt-3 text-xs text-gray-400 space-y-1">
-                      <p>Total Spend: {formatPKR(monthlyAnalysis.summary.total_spend)}</p>
-                      <p>Possible Savings: {formatPKR(monthlyAnalysis.summary.total_savings_found)}</p>
+                    <div className="bg-gray-800 rounded-2xl px-4 py-3 text-sm text-gray-200 max-w-[85%]">
+                      <p className="mb-2">{monthlyAnalysis.summary.verdict}</p>
+
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <p>Total spend: {formatPKR(monthlyAnalysis.summary.total_spend)}</p>
+                        <p>Possible savings: {formatPKR(monthlyAnalysis.summary.total_savings_found)}</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Expense Cards */}
                   <div className="space-y-3">
                     {monthlyAnalysis.expenses.map((e, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gray-800/80 rounded-xl p-4 border border-gray-700"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="font-medium text-gray-200">{e.title}</p>
-                          <span
-                            className={
-                              "text-xs px-2 py-0.5 rounded-full " +
-                              (e.tag === "Negative"
-                                ? "bg-rose-500/20 text-rose-400"
-                                : "bg-sky-500/20 text-sky-400")
-                            }
-                          >
-                            {e.tag}
-                          </span>
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center mt-1">
+                          <Sparkles size={14} className="text-sky-400" />
                         </div>
 
-                        <p className="text-xs text-gray-400 mb-2">
-                          {e.is_essential ? "Essential expense" : "Non essential"}
-                        </p>
+                        <div className="bg-gray-800/90 rounded-2xl px-4 py-3 text-sm text-gray-200 max-w-[85%]">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-medium">{e.title}</p>
+                            <span
+                              className={
+                                "text-xs px-2 py-0.5 rounded-full " +
+                                (e.tag === "Negative"
+                                  ? "bg-rose-500/20 text-rose-400"
+                                  : "bg-sky-500/20 text-sky-400")
+                              }
+                            >
+                              {e.tag}
+                            </span>
+                          </div>
 
-                        <p className="text-gray-300 text-sm">
-                          {e.note}
-                        </p>
-
-                        {e.can_cut > 0 && (
-                          <p className="text-xs text-emerald-400 mt-2">
-                            Possible cut: {formatPKR(e.can_cut)}
+                          <p className="text-xs text-gray-400 mb-1">
+                            {e.is_essential ? "Essential expense" : "Non essential"}
                           </p>
-                        )}
+
+                          <p className="text-sm text-gray-300">
+                            {e.note}
+                          </p>
+
+                          {e.can_cut > 0 && (
+                            <p className="text-xs text-emerald-400 mt-2">
+                              Save about {formatPKR(e.can_cut)}
+                            </p>
+                          )}
+                        </div>
                       </div>
+
                     ))}
                   </div>
                 </>
