@@ -32,16 +32,6 @@ import { api } from "../api/client";
 
 const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_BACKEND) || "";
 
-const authHeaders = () => {
-  const token = localStorage.getItem("token");
-  return token
-    ? {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    }
-    : null;
-};
-
 const formatPKR = (value = 0) => {
   const abs = Math.abs(value);
 
@@ -60,6 +50,7 @@ export default function Transactions() {
   const [selectedExpenseIds, setSelectedExpenseIds] = useState([]);
   const [monthlyAnalysis, setMonthlyAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptError, setReceiptError] = useState("");
   const navigate = useNavigate();
@@ -101,6 +92,9 @@ export default function Transactions() {
     date: "",
   });
 
+  const [receiptItems, setReceiptItems] = useState([]);
+  const [multiItemMode, setMultiItemMode] = useState(false);
+
   const fetchIncomes = async () => {
     const incomes = await api.get("/api/incomes");
 
@@ -109,7 +103,7 @@ export default function Transactions() {
       backendId: i.id,
       type: "income",
       category: i.category,
-      title: i.source, // ✅ THIS IS THE FIX
+      title: i.source,
       amount: Number(i.amount),
       date: i.date,
     }));
@@ -164,13 +158,21 @@ export default function Transactions() {
     if (expensesForMonth.length === 0) return;
 
     setAnalysisLoading(true);
+    setAnalysisError("");
 
     analyzeExpenses(expensesForMonth)
       .then((res) => {
         setMonthlyAnalysis(res);
+        setAnalysisError("");
       })
       .catch((err) => {
         console.error("AI analysis failed", err);
+        setAnalysisError(
+          err.message?.includes("CORS") || err.message?.includes("Failed to fetch")
+            ? "Unable to connect to AI service. Please check backend configuration."
+            : err.message || "Failed to analyze expenses"
+        );
+        setMonthlyAnalysis(null);
       })
       .finally(() => {
         setAnalysisLoading(false);
@@ -207,14 +209,21 @@ export default function Transactions() {
 
     setAiOpen(true);
     setAnalysisLoading(true);
+    setAnalysisError("");
 
     try {
       const res = await analyzeExpenses(selectedExpenses);
       console.log(res);
       setMonthlyAnalysis(res);
-
+      setAnalysisError("");
     } catch (err) {
       console.error("AI analysis failed", err);
+      setAnalysisError(
+        err.message?.includes("CORS") || err.message?.includes("Failed to fetch")
+          ? "Unable to connect to AI service. Please check backend configuration."
+          : err.message || "Failed to analyze expenses"
+      );
+      setMonthlyAnalysis(null);
     } finally {
       setAnalysisLoading(false);
       setSelectedExpenseIds([]);
@@ -230,18 +239,197 @@ export default function Transactions() {
 
     try {
       const res = await classifyReceiptImage(file);
+      console.log("OCR Response:", res);
 
+      const extractedData = {
+        title: "",
+        amount: "",
+        category: "",
+        date: new Date().toISOString().split("T")[0],
+      };
+
+      let items = [];
+
+      if (res) {
+        // Parse extracted_text if available
+        if (res.extracted_text) {
+          const text = res.extracted_text;
+
+          // Extract all amounts and their context
+          const amountMatches = text.match(/[\d,]+\.?\d{0,2}/g) || [];
+          const lines = text
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0 && line.length < 100);
+
+          // Try to identify individual items with prices
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            // Look for lines with both text and numbers (potential items)
+            if (
+              line.match(/\d+\.?\d{0,2}/) &&
+              !line.includes("Receipt") &&
+              !line.includes("Share") &&
+              !line.includes("View") &&
+              !line.match(/^©|^™|^°|^§/) &&
+              line.length > 5
+            ) {
+              const itemAmount = line.match(/([\d,]+\.?\d{0,2})$/)?.[1];
+              const itemTitle = line.replace(/([\d,]+\.?\d{0,2})$/, "").trim();
+
+              if (itemTitle.length > 2 && itemAmount) {
+                items.push({
+                  id: `item-${items.length}`,
+                  title: itemTitle,
+                  amount: itemAmount.replace(/,/g, ""),
+                  selected: true,
+                });
+              }
+            }
+          }
+
+          // If multiple items found, enable multi-item mode
+          if (items.length > 1) {
+            setMultiItemMode(true);
+            setReceiptItems(items);
+          }
+
+          // Get first valid amount for total
+          const firstAmount = amountMatches[0];
+          if (firstAmount) {
+            extractedData.amount = firstAmount.replace(/,/g, "");
+          }
+
+          // Get merchant name from first substantial line
+          for (const line of lines) {
+            if (
+              line.length > 3 &&
+              !line.includes("Receipt") &&
+              !line.includes("Share") &&
+              !line.includes("View") &&
+              !line.match(/^\d+/) &&
+              !line.match(/^©|^™|^°|^§/) &&
+              !line.match(/^\d{10,}/)
+            ) {
+              extractedData.title = line;
+              break;
+            }
+          }
+        }
+
+        // Extract category/classification
+        if (res.classification && res.classification !== "Unknown") {
+          extractedData.category = res.classification;
+        }
+
+        // Fallback field mapping
+        extractedData.title =
+          extractedData.title ||
+          res.title ||
+          res.item ||
+          res.product ||
+          res.description ||
+          "";
+
+        extractedData.amount =
+          extractedData.amount ||
+          res.amount ||
+          res.total ||
+          res.price ||
+          res.cost ||
+          "";
+
+        extractedData.category =
+          extractedData.category ||
+          res.category ||
+          res.merchant ||
+          res.store ||
+          res.vendor ||
+          "";
+
+        extractedData.date =
+          res.date ||
+          res.transaction_date ||
+          res.purchase_date ||
+          extractedData.date;
+
+        if (typeof extractedData.amount === "number") {
+          extractedData.amount = extractedData.amount.toString();
+        }
+      }
+
+      // Set single expense data
       setNewExpense((prev) => ({
         ...prev,
-        title: prev.title || res.classification || "",
+        title: prev.title || extractedData.title,
+        amount: prev.amount || extractedData.amount,
+        category: prev.category || extractedData.category,
+        date: prev.date || extractedData.date,
       }));
 
+      if (!extractedData.title && !extractedData.amount) {
+        setReceiptError(
+          "Couldn't extract data from receipt. Please fill in details manually."
+        );
+      }
     } catch (err) {
-      console.error(err);
-      setReceiptError("Failed to read receipt");
+      console.error("Receipt upload error:", err);
+      setReceiptError("Failed to read receipt. Please try again or fill in manually.");
     } finally {
       setReceiptLoading(false);
     }
+  };
+
+  const handleAddMultipleExpenses = async () => {
+    const selectedItems = receiptItems.filter((item) => item.selected);
+
+    if (selectedItems.length === 0) {
+      setReceiptError("Please select at least one item");
+      return;
+    }
+
+    try {
+      const expensesToCreate = selectedItems.map((item) => ({
+        title: item.title,
+        category: newExpense.category,
+        amount: parseFloat(item.amount) || 0,
+        date: newExpense.date,
+      }));
+
+      // Create all expenses
+      for (const expense of expensesToCreate) {
+        const created = await api.post("/api/expenses", expense);
+        setTransactions((prev) => [
+          ...prev,
+          {
+            id: `e-${created.id}`,
+            backendId: created.id,
+            type: "expense",
+            category: created.category,
+            title: created.title,
+            amount: Number(created.amount),
+            date: created.date,
+          },
+        ]);
+      }
+
+      toast(`${expensesToCreate.length} expenses added`, { type: "success" });
+      setNewExpense({ category: "", amount: "", date: "", title: "" });
+      setReceiptItems([]);
+      setMultiItemMode(false);
+      setShowModal(false);
+    } catch (err) {
+      console.error("Failed to add expenses", err);
+      toast(err.message || "Failed to add expenses", { type: "error" });
+    }
+  };
+
+  const toggleItemSelection = (itemId) => {
+    setReceiptItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, selected: !item.selected } : item
+      )
+    );
   };
 
 
@@ -697,6 +885,38 @@ export default function Transactions() {
                       )}
                     </div>
 
+                    {multiItemMode && receiptItems.length > 0 && (
+                      <div className="border border-gray-700 rounded-lg p-3 bg-gray-800/50 space-y-2">
+                        <p className="text-xs font-semibold text-sky-400">
+                          📋 Found {receiptItems.length} items - Select which to create:
+                        </p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {receiptItems.map((item) => (
+                            <label
+                              key={item.id}
+                              className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-700/50 transition"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.selected}
+                                onChange={() => toggleItemSelection(item.id)}
+                                className="accent-sky-500 w-4 h-4"
+                              />
+                              <span className="text-xs flex-1 text-gray-300">
+                                {item.title}
+                              </span>
+                              <span className="text-xs font-semibold text-emerald-400">
+                                {formatPKR(parseFloat(item.amount))}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          Category: {newExpense.category || "(from receipt)"}
+                        </p>
+                      </div>
+                    )}
+
                     <input
                       type="text"
                       placeholder="Expense Title"
@@ -729,13 +949,23 @@ export default function Transactions() {
 
               <div className="flex justify-end gap-2 mt-4">
                 <button
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setMultiItemMode(false);
+                    setReceiptItems([]);
+                  }}
                   className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={transactionType === "income" ? handleAddIncome : handleAddExpense}
+                  onClick={
+                    transactionType === "income"
+                      ? handleAddIncome
+                      : multiItemMode && receiptItems.length > 0
+                      ? handleAddMultipleExpenses
+                      : handleAddExpense
+                  }
                   className={
                     `px-4 py-2 rounded-lg text-white font-medium shadow-md transition-all ` +
                     (transactionType === "income"
@@ -743,32 +973,15 @@ export default function Transactions() {
                       : "bg-gradient-to-r from-rose-500 to-pink-500 hover:shadow-rose-500/30")
                   }
                 >
-                  Add
+                  {multiItemMode && receiptItems.length > 0
+                    ? `Create ${receiptItems.filter((i) => i.selected).length} Expenses`
+                    : "Add"}
                 </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-700/50">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 flex items-center justify-center">
-          <Bot size={18} className="text-white" />
-        </div>
-
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-100">Spending Assistant</p>
-          <p className="text-xs text-gray-400">Analyzing your expenses</p>
-        </div>
-
-        <button
-          onClick={() => setAiOpen(false)}
-          className="text-gray-400 hover:text-gray-200"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-
       <AnimatePresence>
         {aiOpen && (
           <motion.div
@@ -804,12 +1017,19 @@ export default function Transactions() {
                   </motion.span>
                   <span className="text-sky-400">•••</span>
                 </div>
-
               )}
 
-              {!analysisLoading && !monthlyAnalysis && (
+              {analysisError && (
+                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-rose-400 text-sm">
+                  <p className="font-semibold mb-1">Analysis Error</p>
+                  <p className="text-xs">{analysisError}</p>
+                </div>
+              )}
+
+              {!analysisLoading && !monthlyAnalysis && !analysisError && (
                 <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-gray-400">
                   No insights yet. Add some expenses this month.
+
                 </div>
               )}
 
@@ -846,7 +1066,9 @@ export default function Transactions() {
                                 "text-xs px-2 py-0.5 rounded-full " +
                                 (e.tag === "Negative"
                                   ? "bg-rose-500/20 text-rose-400"
-                                  : "bg-sky-500/20 text-sky-400")
+                                  : e.tag === "Neutral"
+                                  ? "bg-amber-500/20 text-amber-400"
+                                  : "bg-emerald-500/20 text-emerald-400")
                               }
                             >
                               {e.tag}

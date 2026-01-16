@@ -17,7 +17,7 @@ export async function signup({ name, email, password }) {
       const data = await response.json();
       if (data?.message) message = data.message;
     } catch {
-      // backend returned empty body
+      
     }
 
     throw new Error(message);

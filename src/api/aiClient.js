@@ -15,6 +15,10 @@ function authHeaders(isFormData = false) {
 }
 
 async function request(method, path, body) {
+  if (!API_AI) {
+    throw new Error("AI API URL not configured");
+  }
+
   const url = path.startsWith("/") ? `${API_AI}${path}` : path;
   const isFormData = body instanceof FormData;
   const headers = authHeaders(isFormData);
@@ -28,17 +32,22 @@ async function request(method, path, body) {
     opts.body = isFormData ? body : JSON.stringify(body);
   }
 
-  const res = await fetch(url, opts);
+  try {
+    const res = await fetch(url, opts);
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `HTTP ${res.status}`);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(txt || `HTTP ${res.status}`);
+    }
+
+    const text = await res.text().catch(() => "");
+    return text ? JSON.parse(text) : null;
+  } catch (error) {
+    console.error(`AI API request failed: ${error.message}`);
+    throw error;
   }
-
-  const text = await res.text().catch(() => "");
-  return text ? JSON.parse(text) : null;
 }
 
 export const aiApi = {
-  post: (p, b) => request("POST", p, b),
+  post: async (p, b) => request("POST", p, b),
 };
